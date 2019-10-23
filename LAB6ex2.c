@@ -1,6 +1,5 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
-enum States{Init ,Game, End}state;
 volatile unsigned char TimerFlag = 0; //TimerISR() sets this to a 1. C programmer should clear to 0.
 
 // Internal variables for mapping AVR's ISR to our cleaner TimerISR model.
@@ -61,58 +60,65 @@ void TimerSet(unsigned long M)
 	_avr_timer_cntcurr = _avr_timer_M;
 }
 
-int main()
-{
-	DDRB = 0xFF; //Set PORTB to output
-	PORTB =0x00; // Init PORTB to 0s
-	DDRA = 0x00; //SET PORTA to input
-	PORTA = 0xFF;
-	state = Init;
+typedef enum States {init, LightShow, hold, wait} States;
+int LightSM(int);
+unsigned char tempB = 0x00;
+unsigned char clock = 0;
+
+
+int main(void) {
+    /* Insert DDR and PORT initializations */
+	DDRA = 0x00; PORTA = 0xFF;
+	DDRB = 0xFF; PORTB = 0x00;
+    /* Insert your solution below */
 	TimerSet(300);
 	TimerOn();
-	while(1)
-	{
-		
-		Tick();
-		while(!TimerFlag) {}
-		TimerFlag = 0;
-	}	
-	return 0;
+	States state = init;
+    while (1) {	
+	
+	state = LightSM(state);
+	while (!TimerFlag);	
+	TimerFlag = 0;
+    }
+    return 1;
 }
 
-void Tick() 
-{
-		unsigned char tmpB = 0x01;
-		unsigned char A0 = (~PINA & 0x01);
-	switch(state) //transitions
-	{ 
-		case Init: 
-				state = Game; 
+int LightSM (int state){
+	unsigned char A0 = ~PINA & 0x01;
+	switch (state){
+		case init:
+			clock = 0x00;
+			tempB = 0x00;
+			state = LightShow;
 			break;
-		case Game:
-			if(A0)
-				state = End;
-			else 
-				state = Game;
+		case LightShow:
+			state = A0? hold: LightShow;
 			break;
-		case End:
-			if (A0)
-				state = Init;
-			else
-				state = End;
+		case hold:
+			state = A0? hold: wait;
 			break;
-	};
-	switch(state)
-	{ // Actions
-		case Init:
-			tmpB = 0x01;
+		case wait:
+			state = A0? init: wait;
+	}
+	switch (state) {
+		case init: 
+			tempB = 0x0;
 			break;
-		case Game:
-			if(tmpB == 0x08) {tmpB = 0x01;}
-			else {tmpB = tmpB << 1;}
+		case LightShow:
+			tempB = PORTB;
+			if(tempB == 0x00){
+				tempB = 0x01;
+			}
+			else if (tempB == 0x01 || tempB == 0x02){
+				tempB <<= 1;
+			}
+			else if (tempB == 0x04){
+				tempB = 0x01;
+			}
 			break;
-		case End:
+		case hold:
 			break;
 	}
-	PORTB = tmpB;
+	PORTB = tempB;
+	return state;
 }

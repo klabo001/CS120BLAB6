@@ -1,5 +1,6 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
+
 volatile unsigned char TimerFlag = 0; //TimerISR() sets this to a 1. C programmer should clear to 0.
 
 // Internal variables for mapping AVR's ISR to our cleaner TimerISR model.
@@ -60,65 +61,57 @@ void TimerSet(unsigned long M)
 	_avr_timer_cntcurr = _avr_timer_M;
 }
 
-typedef enum States {init, LightShow, hold, wait} States;
-int LightSM(int);
-unsigned char tempB = 0x00;
-unsigned char clock = 0;
-
-
-int main(void) {
-    /* Insert DDR and PORT initializations */
-	DDRA = 0x00; PORTA = 0xFF;
-	DDRB = 0xFF; PORTB = 0x00;
-    /* Insert your solution below */
-	TimerSet(300);
-	TimerOn();
-	States state = init;
-    while (1) {	
+enum States {Init, Shift, Stop} state;
+//unsigned char tempB = 0x00;
 	
-	state = LightSM(state);
-	while (!TimerFlag);	
-	TimerFlag = 0;
-    }
-    return 1;
+int main()
+{
+	DDRB = 0xFF; PORTB =0x01;//Set PORTB to output PORTB =0x00; // Init PORTB to 0s
+	DDRA = 0x00; PORTA = 0xFF;//SET PORTA to input button pull up mode 
+	TimerSet(200);
+	TimerOn();
+	state = Init;
+	while (1)
+	{
+		Tick();
+		while(!TimerFlag);
+		TimerFlag = 0;
+	}
+	
+	return 0;
+		
 }
 
-int LightSM (int state){
+ void Tick() 
+{
 	unsigned char A0 = ~PINA & 0x01;
-	switch (state){
-		case init:
-			clock = 0x00;
-			tempB = 0x00;
-			state = LightShow;
+	switch(state) // transitions
+	{
+		case Init: 
+			state = Shift;
 			break;
-		case LightShow:
-			state = A0? hold: LightShow;
+		case Shift: 
+			if(!A0) state = Shift;
+			else state = Stop;
 			break;
-		case hold:
-			state = A0? hold: wait;
-			break;
-		case wait:
-			state = A0? init: wait;
-	}
-	switch (state) {
-		case init: 
-			tempB = 0x0;
-			break;
-		case LightShow:
-			tempB = PORTB;
-			if(tempB == 0x00){
-				tempB = 0x01;
-			}
-			else if (tempB == 0x01 || tempB == 0x02){
-				tempB <<= 1;
-			}
-			else if (tempB == 0x04){
-				tempB = 0x01;
-			}
-			break;
-		case hold:
+		case Stop: 
+			if (!A0) state = Stop;
+			else state = Init;
 			break;
 	}
-	PORTB = tempB;
-	return state;
+	
+	switch(state) //actions
+	{
+		case Init:
+			PORTB = 0x01;
+			break;
+		case Shift:
+			if(PORTB < 0x04)
+			PORTB = PORTB << 1;
+			else
+			PORTB = 0x01;
+		case Stop:
+			break;
+	}
+		
 }
